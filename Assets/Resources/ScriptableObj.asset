@@ -1,0 +1,16 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9e6a98988141453c80bd0383df98eccf, type: 3}
+  m_Name: ScriptableObj
+  m_EditorClassIdentifier: 
+  _circle: {fileID: 2861225096469514127, guid: 2104f13f2b6c84440ad07e764ece1743, type: 3}
+  _shader: {fileID: 4800000, guid: bedead328f541c64ab3faf237be3e329, type: 3}
