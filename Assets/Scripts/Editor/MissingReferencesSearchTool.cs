@@ -68,14 +68,16 @@ namespace Editor
                 
                 var serializedObject = new SerializedObject(component);
                 var serializedProperty = serializedObject.GetIterator();
-                var tempPropertyInfos = SearchForMissingReferencesInProperties(serializedProperty, component.name, path, obj);
+                var tempPropertyInfos =
+                    SearchForMissingReferencesInProperties(serializedProperty, component.name, path, obj);
                 propertyInfos.AddRange(tempPropertyInfos);
             }
 
             return propertyInfos;
         }
 
-        private static List<PropertyInfo> SearchForMissingReferencesInScriptableObject(ScriptableObject scriptableObject, string path)
+        private static List<PropertyInfo> SearchForMissingReferencesInScriptableObject(
+            ScriptableObject scriptableObject, string path)
         {
             var serializedObject = new SerializedObject(scriptableObject);
             var serializedProperty = serializedObject.GetIterator();
@@ -100,19 +102,7 @@ namespace Editor
                     propertyInfos.Add(propertyInfo);
                 }
             }
-
-            // while (serializedProperty.NextVisible(true))
-            // {
-            //     if (serializedProperty.propertyType != SerializedPropertyType.ObjectReference)
-            //     {
-            //         continue;
-            //     }
-            //
-            //     var o = serializedProperty.objectReferenceValue;
-            //     if (o == null)
-            //         // Debug.Log(path + " " + serializedProperty.name + " v: " + serializedProperty.isInstantiatedPrefab);
-            // }
-
+            
             return propertyInfos;
         }
     }
