@@ -1,62 +1,77 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
-using Object = UnityEngine.Object;
 
 namespace Editor
 {
-    public class MissingReferencesSearchTool : UnityEditor.Editor
+    public class MissingReferencesSearchTool : EditorWindow
     {
-        [MenuItem("Missing References Search/Search For Missing References In All Assets")]
-        public static void Search()
+        [MenuItem("Tool/Missing References Search Tool")]
+        public static void ShowWindow()
+        {
+            GetWindow<MissingReferencesSearchTool>("Missing References Search Tool");
+        }
+
+        private void OnGUI()
+        {
+            if (GUILayout.Button("Search For Missing References In All Assets"))
+            {
+                Search();
+            }
+        }
+        
+        private void Search()
         {
             var assetPaths = SearchForAllAssets();
-            var propertyInfos = SearchForPropertiesWithMissingObjectReferences(assetPaths);
-            var searchResultsWindow = EditorWindow.GetWindowWithRect<SearchResults>(new Rect(0, 0, 1200, 500));
+            var propertyInfos = SearchForPropertiesWithMissingObjectReferences(assetPaths).ToList();
+            var searchResultsWindow = GetWindow<SearchResults>("Search Results");
             searchResultsWindow.Clear();
             searchResultsWindow.Initialize(propertyInfos);
         }
 
-        private static List<string> SearchForAllAssets()
+        private List<string> SearchForAllAssets()
         {
             var assetsGUIDs = AssetDatabase.FindAssets("t:Object", new []{"Assets/"});
-            var assetPaths = new List<string>(assetsGUIDs.Length);
-            assetPaths.AddRange(assetsGUIDs.Select(AssetDatabase.GUIDToAssetPath));
-            return assetPaths;
+            return assetsGUIDs.Select(AssetDatabase.GUIDToAssetPath).ToList();
         }
 
-        private static List<PropertyInfo> SearchForPropertiesWithMissingObjectReferences(List<string> assetPaths)
+        private IEnumerable<PropertyInfo> SearchForPropertiesWithMissingObjectReferences(List<string> assetPaths)
         {
-            var propertyInfos = new List<PropertyInfo>();
-            foreach (var assetsPath in assetPaths)
+            foreach (var assetPath in assetPaths)
             {
-                var obj = AssetDatabase.LoadAssetAtPath<GameObject>(assetsPath);
-                if (obj == null)
+                if (TryLoadObject(assetPath, out GameObject obj))
                 {
-                    var scriptableObject = AssetDatabase.LoadAssetAtPath<ScriptableObject>(assetsPath);
-                    if (scriptableObject == null)
+                    var gameObjectPropertyInfos = SearchForMissingReferencesInGameObject(obj, assetPath);
+                    foreach (var gameObjectPropertyInfo in gameObjectPropertyInfos)
                     {
-                        continue;
+                        yield return gameObjectPropertyInfo;
                     }
-
-                    var scriptableObjectPropertyInfos =
-                        SearchForMissingReferencesInScriptableObject(scriptableObject, assetsPath);
-                    propertyInfos.AddRange(scriptableObjectPropertyInfos);
-                    continue;
                 }
 
-                var gameObjectPropertyInfos = SearchForMissingReferencesInGameObject(obj, assetsPath);
-                propertyInfos.AddRange(gameObjectPropertyInfos);
+                if (!TryLoadObject(assetPath, out ScriptableObject scriptableObject))
+                {
+                    continue;
+                }
+                
+                var scriptableObjectPropertyInfos =
+                    SearchForMissingReferencesInScriptableObject(scriptableObject, assetPath);
+                foreach (var scriptableObjectPropertyInfo in scriptableObjectPropertyInfos)
+                {
+                    yield return scriptableObjectPropertyInfo;
+                }
             }
-
-            return propertyInfos;
         }
 
-        private static List<PropertyInfo> SearchForMissingReferencesInGameObject(GameObject obj, string path)
+        private bool TryLoadObject<TObj>(string assetPath, out TObj obj)
+            where TObj : Object
         {
-            var propertyInfos = new List<PropertyInfo>();
+            obj = AssetDatabase.LoadAssetAtPath<TObj>(assetPath);
+            return obj != null;
+        }
+
+        private IEnumerable<PropertyInfo> SearchForMissingReferencesInGameObject(GameObject obj, string path)
+        {
             var components = obj.GetComponentsInChildren<Component>(true);
             foreach (var component in components)
             {
@@ -66,41 +81,58 @@ namespace Editor
                     continue;
                 }
                 
-                var serializedObject = new SerializedObject(component);
-                var serializedProperty = serializedObject.GetIterator();
+                using var serializedObject = new SerializedObject(component);
+                using var serializedProperty = serializedObject.GetIterator();
                 var tempPropertyInfos =
-                    SearchForMissingReferencesInProperties(serializedProperty, component.name, path, obj);
-                propertyInfos.AddRange(tempPropertyInfos);
+                    SearchForMissingReferencesInProperties(serializedProperty, component, path, obj);
+                foreach (var tempPropertyInfo in tempPropertyInfos)
+                {
+                    yield return tempPropertyInfo;
+                }
             }
-
-            return propertyInfos;
         }
 
-        private static List<PropertyInfo> SearchForMissingReferencesInScriptableObject(
-            ScriptableObject scriptableObject, string path)
+        private IEnumerable<PropertyInfo> SearchForMissingReferencesInScriptableObject(Object scriptableObject,
+            string path)
         {
-            var serializedObject = new SerializedObject(scriptableObject);
-            var serializedProperty = serializedObject.GetIterator();
-            var propertyInfos = SearchForMissingReferencesInProperties(serializedProperty, "-", path, scriptableObject);
-            serializedProperty.Dispose();
-            serializedObject.Dispose();
-            return propertyInfos;
+            using var serializedObject = new SerializedObject(scriptableObject);
+            using var serializedProperty = serializedObject.GetIterator();
+            var propertyInfos =
+                SearchForMissingReferencesInProperties(serializedProperty, null, path, scriptableObject);
+            foreach (var propertyInfo in propertyInfos)
+            {
+                yield return propertyInfo;
+            }
         }
 
-        private static List<PropertyInfo> SearchForMissingReferencesInProperties(SerializedProperty serializedProperty,
-            string componentName, string path, Object obj)
+        private IEnumerable<PropertyInfo> SearchForMissingReferencesInProperties(SerializedProperty serializedProperty,
+            Object component, string path, Object obj)
         {
             var propertyInfos = new List<PropertyInfo>();
             while (serializedProperty.NextVisible(true))
             {
-                if (serializedProperty.propertyType == SerializedPropertyType.ObjectReference &&
-                    serializedProperty.objectReferenceValue == null &&
-                    serializedProperty.objectReferenceInstanceIDValue != 0)
+                var isObjectReference = serializedProperty.propertyType == SerializedPropertyType.ObjectReference;
+                if (!isObjectReference)
                 {
-                    var propertyInfo = new PropertyInfo(serializedProperty.displayName, componentName,
-                        serializedProperty.propertyPath, path, obj);
-                    propertyInfos.Add(propertyInfo);
+                    continue;
                 }
+                
+                var isNull = serializedProperty.objectReferenceValue == null;
+                if (!isNull)
+                {
+                    continue;
+                }
+                
+                var isInstanceIDValueEqualsZero = serializedProperty.objectReferenceInstanceIDValue == 0;
+                if (isInstanceIDValueEqualsZero)
+                {
+                    continue;
+                }
+                
+                var componentName = component == null ? "-" : component.ToString();
+                var propertyInfo = new PropertyInfo(serializedProperty.displayName, componentName,
+                    serializedProperty.propertyPath, path, obj);
+                propertyInfos.Add(propertyInfo);
             }
             
             return propertyInfos;
