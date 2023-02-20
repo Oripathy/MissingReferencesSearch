@@ -7,15 +7,25 @@ namespace Editor
 {
     public class MissingReferencesSearchTool : EditorWindow
     {
-        [MenuItem("Tool/Missing References Search Tool")]
+        [MenuItem("Tools/Missing References Search Tool")]
         public static void ShowWindow()
         {
-            GetWindow<MissingReferencesSearchTool>("Missing References Search Tool");
+            GetWindowWithRect<MissingReferencesSearchTool>(new Rect(0f, 0f, 300f, 100f), false,
+                "Missing References Search Tool");
         }
 
         private void OnGUI()
         {
-            if (GUILayout.Button("Search For Missing References In All Assets"))
+            var guiStyle = new GUIStyle(GUI.skin.GetStyle("Label"))
+            {
+                wordWrap = true
+            };
+            
+            GUILayout.Label(new GUIContent(
+                    "This tool searches for missing references in all assets (including it's child objects and scriptable objects) in Assets/"),
+                guiStyle);
+            GUILayout.Space(10);
+            if (GUILayout.Button("Search For Missing References"))
             {
                 Search();
             }
@@ -42,7 +52,7 @@ namespace Editor
             {
                 if (TryLoadObject(assetPath, out GameObject obj))
                 {
-                    var gameObjectPropertyInfos = SearchForMissingReferencesInGameObject(obj, assetPath);
+                    var gameObjectPropertyInfos = SearchForMissingReferencesInGameObject(obj);
                     foreach (var gameObjectPropertyInfo in gameObjectPropertyInfos)
                     {
                         yield return gameObjectPropertyInfo;
@@ -55,7 +65,7 @@ namespace Editor
                 }
                 
                 var scriptableObjectPropertyInfos =
-                    SearchForMissingReferencesInScriptableObject(scriptableObject, assetPath);
+                    SearchForMissingReferencesInScriptableObject(scriptableObject);
                 foreach (var scriptableObjectPropertyInfo in scriptableObjectPropertyInfos)
                 {
                     yield return scriptableObjectPropertyInfo;
@@ -70,7 +80,7 @@ namespace Editor
             return obj != null;
         }
 
-        private IEnumerable<PropertyInfo> SearchForMissingReferencesInGameObject(GameObject obj, string path)
+        private IEnumerable<PropertyInfo> SearchForMissingReferencesInGameObject(GameObject obj)
         {
             var components = obj.GetComponentsInChildren<Component>(true);
             foreach (var component in components)
@@ -84,7 +94,7 @@ namespace Editor
                 using var serializedObject = new SerializedObject(component);
                 using var serializedProperty = serializedObject.GetIterator();
                 var tempPropertyInfos =
-                    SearchForMissingReferencesInProperties(serializedProperty, component, path, obj);
+                    SearchForMissingReferencesInProperties(serializedProperty, component,  obj);
                 foreach (var tempPropertyInfo in tempPropertyInfos)
                 {
                     yield return tempPropertyInfo;
@@ -92,13 +102,12 @@ namespace Editor
             }
         }
 
-        private IEnumerable<PropertyInfo> SearchForMissingReferencesInScriptableObject(Object scriptableObject,
-            string path)
+        private IEnumerable<PropertyInfo> SearchForMissingReferencesInScriptableObject(Object scriptableObject)
         {
             using var serializedObject = new SerializedObject(scriptableObject);
             using var serializedProperty = serializedObject.GetIterator();
             var propertyInfos =
-                SearchForMissingReferencesInProperties(serializedProperty, null, path, scriptableObject);
+                SearchForMissingReferencesInProperties(serializedProperty, null, scriptableObject);
             foreach (var propertyInfo in propertyInfos)
             {
                 yield return propertyInfo;
@@ -106,7 +115,7 @@ namespace Editor
         }
 
         private IEnumerable<PropertyInfo> SearchForMissingReferencesInProperties(SerializedProperty serializedProperty,
-            Object component, string path, Object obj)
+            Object component, Object obj)
         {
             var propertyInfos = new List<PropertyInfo>();
             while (serializedProperty.NextVisible(true))
@@ -117,21 +126,15 @@ namespace Editor
                     continue;
                 }
                 
-                var isNull = serializedProperty.objectReferenceValue == null;
-                if (!isNull)
-                {
-                    continue;
-                }
-                
+                var isValueEqualsNull = serializedProperty.objectReferenceValue == null;
                 var isInstanceIDValueEqualsZero = serializedProperty.objectReferenceInstanceIDValue == 0;
-                if (isInstanceIDValueEqualsZero)
+                if (!isValueEqualsNull || isInstanceIDValueEqualsZero)
                 {
                     continue;
                 }
                 
-                var componentName = component == null ? "-" : component.ToString();
-                var propertyInfo = new PropertyInfo(serializedProperty.displayName, componentName,
-                    serializedProperty.propertyPath, path, obj);
+                var componentForSelection = component == null ? obj : component;
+                var propertyInfo = new PropertyInfo(serializedProperty.displayName, componentForSelection, obj);
                 propertyInfos.Add(propertyInfo);
             }
             

@@ -15,7 +15,7 @@ namespace Editor
         private readonly Color _lighterColor = Color.white * 0.3f;
         private readonly Color _darkerColor = Color.white * 0.1f;
         private Vector2 _scrollPosition;
-        
+
         public void Initialize(List<PropertyInfo> propertyInfos)
         {
             _propertyInfos = propertyInfos;
@@ -56,12 +56,16 @@ namespace Editor
             
             _scrollPosition = GetScrollViewPosition(_scrollPosition, windowRect);
             _multiColumnHeader.OnGUI(rect: columnRectPrototype, xScroll: 0f);
+            FillTable(columnRectPrototype, columnHeight);
+            GUI.EndScrollView(handleScrollWheel: true);
+        }
+
+        private void FillTable(Rect columnRectPrototype, float columnHeight)
+        {
             for (var i = 0; i < _propertyInfos.Count; i++)
             {
-                DrawTablesRow(columnRectPrototype, columnHeight, i, _propertyInfos[i]);
+                CreateTablesRow(columnRectPrototype, columnHeight, i, _propertyInfos[i]);
             }
-            
-            GUI.EndScrollView(handleScrollWheel: true);
         }
 
         private Vector2 GetScrollViewPosition(Vector2 previousScrollViewPosition, Rect windowRect)
@@ -71,32 +75,26 @@ namespace Editor
             {
                 xMax = _columns.Sum((column) => column.width)
             };
-            
-            return GUI.BeginScrollView(
-                position: positionalRectAreaOfScrollView,
-                scrollPosition: previousScrollViewPosition,
-                viewRect: viewRect,
-                alwaysShowHorizontal: false,
-                alwaysShowVertical: false);
+
+            return GUI.BeginScrollView(positionalRectAreaOfScrollView, previousScrollViewPosition, viewRect, false,
+                false);
         }
 
-        private void DrawTablesRow(Rect columnRectPrototype, float columnHeight, int index, PropertyInfo propertyInfo)
+        private void CreateTablesRow(Rect columnRectPrototype, float columnHeight, int index, PropertyInfo propertyInfo)
         {
             var rowRect = new Rect(source: columnRectPrototype);
-                rowRect.y += columnHeight * (index + 1);
-                var color = index % 2 == 0 ? _darkerColor : _lighterColor;
-                EditorGUI.DrawRect(rect: rowRect, color: color);
-                var columnIndex = 0;
-                DrawLabelField(columnIndex, rowRect, propertyInfo.PropertyName);
-                columnIndex = 1;
-                DrawLabelField(columnIndex, rowRect, propertyInfo.ComponentName);
-                columnIndex = 2;
-                DrawLabelField(columnIndex, rowRect, propertyInfo.PropertyPath);
-                columnIndex = 3;
-                DrawObjectField(columnIndex, rowRect, propertyInfo);
+            rowRect.y += columnHeight * (index + 1);
+            var color = index % 2 == 0 ? _darkerColor : _lighterColor;
+            EditorGUI.DrawRect(rect: rowRect, color: color);
+            var columnIndex = 0;
+            CreateLabelField(columnIndex, rowRect, propertyInfo.PropertyName);
+            columnIndex = 1;
+            CreateClickableLabelField(columnIndex, rowRect, propertyInfo);
+            columnIndex = 2;
+            CreateObjectField(columnIndex, rowRect, propertyInfo.Object);
         }
 
-        private void DrawLabelField(int columnIndex, Rect rowRect, string content)
+        private void CreateLabelField(int columnIndex, Rect rowRect, string content)
         {
             if (_multiColumnHeader.IsColumnVisible(columnIndex: columnIndex))
             {
@@ -109,13 +107,13 @@ namespace Editor
                 };
                     
                 EditorGUI.LabelField(
-                    position: _multiColumnHeader.GetCellRect(visibleColumnIndex: visibleColumnIndex, columnRect),
-                    label: new GUIContent(content),
-                    style: nameFieldGUIStyle);
+                    _multiColumnHeader.GetCellRect(visibleColumnIndex: visibleColumnIndex, columnRect),
+                    new GUIContent(content),
+                    nameFieldGUIStyle);
             }
         }
 
-        private void DrawObjectField(int columnIndex, Rect rowRect, PropertyInfo propertyInfo)
+        private void CreateObjectField(int columnIndex, Rect rowRect, Object obj)
         {
             if (_multiColumnHeader.IsColumnVisible(columnIndex: columnIndex))
             {
@@ -123,11 +121,31 @@ namespace Editor
                 var columnRect = _multiColumnHeader.GetColumnRect(visibleColumnIndex: visibleColumnIndex);
                 columnRect.y = rowRect.y;
                 EditorGUI.ObjectField(
-                    position: _multiColumnHeader.GetCellRect(visibleColumnIndex: visibleColumnIndex,
-                        columnRect),
-                    obj: propertyInfo.Object,
-                    objType: typeof(Object),
-                    allowSceneObjects: false);
+                    _multiColumnHeader.GetCellRect(visibleColumnIndex: visibleColumnIndex, columnRect),
+                    obj,
+                    typeof(Object),
+                    false);
+            }
+        }
+
+        private void CreateClickableLabelField(int columnIndex, Rect rowRect, PropertyInfo propertyInfo)
+        {
+            if (_multiColumnHeader.IsColumnVisible(columnIndex: columnIndex))
+            {
+                var visibleColumnIndex = _multiColumnHeader.GetVisibleColumnIndex(columnIndex: columnIndex);
+                var columnRect = _multiColumnHeader.GetColumnRect(visibleColumnIndex: visibleColumnIndex);
+                columnRect.y = rowRect.y;
+                var cellRect = _multiColumnHeader.GetCellRect(visibleColumnIndex: visibleColumnIndex, columnRect);
+                var nameFieldGUIStyle = new GUIStyle(GUI.skin.label)
+                {
+                    padding = new RectOffset(left: 10, right: 10, top: 2, bottom: 2)
+                };
+
+                EditorGUI.LabelField(cellRect, new GUIContent(propertyInfo.Component.ToString()), nameFieldGUIStyle);
+                if (Event.current.type == EventType.MouseUp && cellRect.Contains(Event.current.mousePosition))
+                {
+                    Selection.activeObject = propertyInfo.Component;
+                }
             }
         }
         
@@ -135,14 +153,13 @@ namespace Editor
         {
             _columns = new[]
             {
-                CreateColumn(new GUIContent("Property Name", "Name of the property with the missing reference"), false),
+                CreateColumn(new GUIContent("Property Name", "Name of the property with the missing reference"), 200f,false),
                 CreateColumn(
-                    new GUIContent("Component Name",
-                        "Name of the component that have the property with the missing reference"), true),
-                CreateColumn(new GUIContent("Property Path", "Actual path to the property"), true),
+                    new GUIContent("Component",
+                        "Component Name. Click on name to put object into inspector window"), 400f,true),
                 CreateColumn(
-                    new GUIContent("Reference To The Object",
-                        "Clickable reference to the object that holds the property with the missing reference"), true)
+                    new GUIContent("Reference To The Asser",
+                        "Clickable reference to the asset"), 300f,true)
             };
 
             _multiColumnHeaderState = new MultiColumnHeaderState(_columns);
@@ -151,13 +168,13 @@ namespace Editor
             _multiColumnHeader.ResizeToFit();
         }
 
-        private MultiColumnHeaderState.Column CreateColumn(GUIContent headerContent, bool allowToggleVisibility)
+        private MultiColumnHeaderState.Column CreateColumn(GUIContent headerContent, float minWidth, bool allowToggleVisibility)
         {
             return new MultiColumnHeaderState.Column
             {
                 allowToggleVisibility = allowToggleVisibility,
                 autoResize = true,
-                minWidth = 300f,
+                minWidth = minWidth,
                 canSort = false,
                 sortingArrowAlignment = TextAlignment.Right,
                 headerContent = headerContent,
@@ -172,6 +189,11 @@ namespace Editor
 
         private void OnDestroy()
         {
+            if (_multiColumnHeader == null)
+            {
+                return;
+            }
+            
             _multiColumnHeader.visibleColumnsChanged -= OnVisibleColumnsChanged;
         }
     }

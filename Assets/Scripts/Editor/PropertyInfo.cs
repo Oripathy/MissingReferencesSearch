@@ -5,18 +5,14 @@ namespace Editor
     public class PropertyInfo
     {
         public string PropertyName { get; }
-        public string ComponentName { get; }
-        public string PropertyPath { get; }
-        public string ObjectPath { get; }
+        public Object Component { get; }
         public Object Object { get; }
 
-        public PropertyInfo(string propertyName, string componentName, string propertyPath, string objectPath, Object o)
+        public PropertyInfo(string propertyName, Object component, Object obj)
         {
             PropertyName = propertyName;
-            ComponentName = componentName;
-            PropertyPath = propertyPath;
-            ObjectPath = objectPath;
-            Object = o;
+            Component = component;
+            Object = obj;
         }
     }
 }
